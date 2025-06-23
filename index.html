@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لعبة النرد - اربح أو اخسر!</title>
+  <style>
+    body {
+      font-family: 'Tahoma', sans-serif;
+      background: linear-gradient(to right, #121212, #1e1e1e);
+      color: white;
+      text-align: center;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: #222;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 10px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      width: 80%;
+      max-width: 300px;
+    }
+    button {
+      background: #2ecc71;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #27ae60;
+    }
+    .result {
+      font-size: 20px;
+      margin-top: 15px;
+      min-height: 1.5em;
+    }
+    .balance {
+      font-weight: bold;
+      color: #f1c40f;
+      margin-bottom: 10px;
+    }
+    .admin-area {
+      margin-top: 30px;
+      background: #111;
+      padding: 15px;
+      border-radius: 10px;
+      text-align: right;
+    }
+    #adminPanel button {
+      margin: 5px;
+      width: auto;
+      padding: 8px 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎲 لعبة النرد (Dice)</h1>
+
+    <!-- تسجيل دخول / تسجيل -->
+    <div id="authSection">
+      <input type="text" id="username" placeholder="اسم المستخدم" />
+      <input type="password" id="password" placeholder="كلمة المرور" />
+      <br />
+      <button onclick="register()">تسجيل</button>
+      <button onclick="login()">دخول</button>
+      <p id="authMsg"></p>
+    </div>
+
+    <!-- القسم الرئيسي للعبة، مخفي قبل تسجيل الدخول -->
+    <div id="gameSection" style="display:none;">
+      <p class="balance">رصيدك الحالي: <span id="balance">0</span> جنيه</p>
+      <label>اختر رقم من 1 إلى 6:</label>
+      <select id="chosenNumber">
+        <option>1</option><option>2</option><option>3</option>
+        <option>4</option><option>5</option><option>6</option>
+      </select>
+      <br />
+      <label>أدخل مبلغ اللعب:</label>
+      <input type="number" id="betAmount" min="1" />
+      <br />
+      <button onclick="playGame()">إلعب الآن</button>
+      <div class="result" id="gameResult"></div>
+
+      <hr />
+      <h3>💰 شحن الرصيد</h3>
+      <p>ادفع إلى فودافون كاش على الرقم: <strong>01068871984</strong></p>
+      <input type="number" id="chargeAmount" placeholder="المبلغ المشحون" />
+      <button onclick="submitRechargeRequest()">لقد قمت بالشحن</button>
+      <div id="rechargeMsg"></div>
+      <p id="pendingRechargeInfo">لا يوجد طلبات.</p>
+
+      <hr />
+      <h3>📤 سحب الأرباح</h3>
+      <input type="number" id="withdrawAmount" placeholder="المبلغ المراد سحبه" />
+      <button onclick="requestWithdraw()">طلب سحب</button>
+      <div id="withdrawMsg"></div>
+    </div>
+
+    <!-- زر دخول الإدارة -->
+    <button onclick="showAdminLogin()" id="showAdminBtn" style="margin-top:20px; display:none;">دخول الإدارة</button>
+
+    <!-- نافذة إدخال كلمة المرور للإدارة -->
+    <div id="adminLoginBox" style="display:none; margin-top:10px;">
+      <input type="password" id="adminPass" placeholder="كلمة مرور الإدارة" />
+      <button onclick="loginAsAdmin()">دخول</button>
+      <p id="adminLoginMsg" style="color: red;"></p>
+    </div>
+
+    <!-- لوحة الإدارة -->
+    <div class="admin-area" id="adminPanel" style="display: none;">
+      <h4>لوحة الإدارة (للمسؤول فقط)</h4>
+
+      <div>
+        <h5>طلبات الشحن في الانتظار:</h5>
+        <ul id="pendingRechargeList"></ul>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <h5>طلبات السحب في الانتظار:</h5>
+        <ul id="pendingWithdrawList"></ul>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const apiBase = 'http://localhost:3000/api'; // عدل هذا حسب سيرفرك
+
+  let currentUser = null;
+  let adminToken = null; // لنظام التحقق البسيط (هنا سنستخدم كلمة السر في الهيدر فقط)
+
+  // --- تسجيل مستخدم جديد ---
+  async function register() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const authMsg = document.getElementById('authMsg');
+
+    if (!username || !password) {
+      authMsg.innerText = '⚠ الرجاء إدخال اسم مستخدم وكلمة مرور.';
+      return;
+    }
+
+    try {
+      const res = await fetch(apiBase + '/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        authMsg.innerText = `⚠ ${data.message}`;
+        return;
+      }
+
+      const user = await res.json();
+      authMsg.style.color = 'green';
+      authMsg.innerText = '✅ تم التسجيل بنجاح! يمكنك الآن تسجيل الدخول.';
+    } catch (err) {
+      authMsg.innerText = '⚠ حدث خطأ في الاتصال بالخادم.';
+    }
+  }
+
+  // --- تسجيل دخول ---
+  async function login() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const authMsg = document.getElementById('authMsg');
+
+    if (!username || !password) {
+      authMsg.innerText = '⚠ الرجاء إدخال اسم مستخدم وكلمة مرور.';
+      return;
+    }
+
+    try {
+      const res = await fetch(apiBase + '/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        authMsg.innerText = `⚠ ${data.message}`;
+        return;
+      }
+
+      currentUser = await res.json();
+      authMsg.innerText = '';
+      document.getElementById('authSection').style.display = 'none';
+      document.getElementById('gameSection').style.display = 'block';
+      document.getElementById('showAdminBtn').style.display = 'inline-block';
+
+      updateBalance();
+      fetchPendingRequests();
+    } catch (err) {
+      authMsg.innerText = '⚠ حدث خطأ في الاتصال بالخادم.';
+    }
+  }
+
+  // --- تحديث الرصيد المعروض ---
+  function updateBalance() {
+    if (!currentUser) return;
+    document.getElementById('balance').innerText = currentUser.balance.toFixed(2);
+  }
+
+  // --- اللعب ---
+  async function playGame() {
+    const chosen = parseInt(document.getElementById('chosenNumber').value);
+    const bet = parseFloat(document.getElementById('betAmount').value);
+    const resultDiv = document.getElementById('gameResult');
+
+    if (isNaN(bet) || bet <= 0 || bet > currentUser.balance) {
+      resultDiv.innerText = "⚠ تحقق من المبلغ المدخل!";
+      return;
+    }
+
+    try {
+      const res = await fetch(apiBase + '/play', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser._id, amount: bet }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        resultDiv.innerText = `⚠ ${data.message}`;
+        return;
+      }
+
+      const data = await res.json();
+
+      currentUser.balance = data.balance;
+      updateBalance();
+
+      if (data.win) {
+        resultDiv.innerText = `✅ فزت! ربحك: ${data.profit + bet} جنيه`;
+      } else {
+        resultDiv.innerText = `❌ خسرت! حظًا أوفر في المرة القادمة.`;
+      }
+    } catch (err) {
+      resultDiv.innerText = "⚠ حدث خطأ في الاتصال بالخادم.";
+    }
+  }
+
+  // --- طلب شحن ---
+  async function submitRechargeRequest() {
+    const amount = parseFloat(document.getElementById('chargeAmount').value);
+    const msg = document.getElementById('rechargeMsg');
+
+    if (isNaN(amount) || amount <= 0) {
+      msg.innerText = "⚠ أدخل مبلغ صالح للشحن.";
+      return;
+    }
+
+    try {
+      const res = await fetch(apiBase + '/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser._id, amount, type: 'deposit' }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        msg.innerText = `⚠ ${data.message}`;
+        return;
+      }
+
+      msg.style.color = 'green';
+      msg.innerText = '📩 تم إرسال طلب الشحن للمراجعة.';
+      document.getElementById('chargeAmount').value = '';
+      fetchPendingRequests();
+    } catch (err) {
+      msg.innerText = "⚠ حدث خطأ في الاتصال بالخادم.";
+    }
+  }
+
+  // --- طلب سحب ---
+  async function requestWithdraw() {
+    const amount = parseFloat(document.getElementById('withdrawAmount').value);
+    const msg = document.getElementById('withdrawMsg');
+
+    if (isNaN(amount) || amount <= 0) {
+      msg.innerText = "⚠ أدخل مبلغ سحب صالح.";
+      return;
+    }
+
+    if (amount > currentUser.balance) {
+      msg.innerText = "⚠ لا يمكنك سحب أكثر من رصيدك!";
+      return;
+    }
+
+    // شرط اللعب بنفس المبلغ المودع
+    if (currentUser.deposited > 0 && currentUser.deposited > currentUser.totalBetPlayed) {
+      msg.innerText = "⚠ لا يمكنك سحب الأموال حتى تلعب بنفس قيمة المبلغ الذي أودعته.";
+      return;
+    }
+
+    try {
+      const res = await fetch(apiBase + '/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser._id, amount, type: 'withdraw' }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        msg.innerText = `⚠ ${data.message}`;
+        return;
+      }
+
+      msg.style.color = 'green';
+      msg.innerText = '📤 تم إرسال طلب السحب للمراجعة.';
+      document.getElementById('withdrawAmount').value = '';
+      fetchPendingRequests();
+    } catch (err) {
+      msg.innerText = "⚠ حدث خطأ في الاتصال بالخادم.";
+    }
+  }
+
+  // --- إظهار صندوق تسجيل دخول الإدارة ---
+  function showAdminLogin() {
+    document.getElementById('adminLoginBox').style.display = 'block';
+  }
+
+  // --- تسجيل دخول الإدارة ---
+  async function loginAsAdmin() {
+    const pass = document.getElementById('adminPass').value;
+    const adminLoginMsg = document.getElementById('adminLoginMsg');
+    adminLoginMsg.innerText = '';
+
+    if (pass !== '6NnhHH4KfCxSA22B') {
+      adminLoginMsg.innerText = '❌ كلمة المرور خاطئة!';
+      return;
+    }
+
+    adminToken = pass; // ببساطة نخزن كلمة السر كتوكن
+
+    document.getElementById('adminPanel').style.display = 'block';
+    document.getElementById('adminLoginBox').style.display = 'none';
+
+    fetchPendingRequests();
+  }
+
+  // --- جلب طلبات الشحن والسحب المعلقة للوحة الإدارة ---
+  async function fetchPendingRequests() {
+    if (!adminToken) return;
+
+    try {
+      const res = await fetch(apiBase + '/admin/requests', {
+        headers: {
+          'admin-password': adminToken,
+        },
+      });
+
+      if (!res.ok) {
+        alert('⚠ لا يمكن جلب طلبات الإدارة (كلمة السر قد تكون خاطئة)');
+        return;
+      }
+
+      const requests = await res.json();
+
+      // تقسيم الطلبات لشحن وسحب
+      const depositRequests = requests.filter(r => r.type === 'deposit');
+      const withdrawRequests = requests.filter(r => r.type === 'withdraw');
+
+      // عرض طلبات الشحن
+      const rechargeList = document.getElementById('pendingRechargeList');
+      rechargeList.innerHTML = '';
+      if (depositRequests.length === 0) {
+        rechargeList.innerHTML = '<li>لا يوجد طلبات شحن معلقة.</li>';
+      } else {
+        depositRequests.forEach(req => {
+          const li = document.createElement('li');
+          li.innerHTML = `من المستخدم: ${req.userId}، المبلغ: ${req.amount} جنيه
+            <button onclick="handleRequest('${req._id}', 'approve')">✅ قبول</button>
+            <button onclick="handleRequest('${req._id}', 'reject')">❌ رفض</button>
+          `;
+          rechargeList.appendChild(li);
+        });
+      }
+
+      // عرض طلبات السحب
+      const withdrawList = document.getElementById('pendingWithdrawList');
+      withdrawList.innerHTML = '';
+      if (withdrawRequests.length === 0) {
+        withdrawList.innerHTML = '<li>لا يوجد طلبات سحب معلقة.</li>';
+      } else {
+        withdrawRequests.forEach(req => {
+          const li = document.createElement('li');
+          li.innerHTML = `من المستخدم: ${req.userId}، المبلغ: ${req.amount} جنيه
+            <button onclick="handleRequest('${req._id}', 'approve')">✅ قبول</button>
+            <button onclick="handleRequest('${req._id}', 'reject')">❌ رفض</button>
+          `;
+          withdrawList.appendChild(li);
+        });
+      }
+
+    } catch (err) {
+      alert('⚠ حدث خطأ أثناء جلب طلبات الإدارة.');
+    }
+  }
+
+  // --- قبول أو رفض طلب في لوحة الإدارة ---
+  async function handleRequest(requestId, action) {
+    if (!adminToken) {
+      alert('❌ يجب تسجيل الدخول كمسؤول أولاً.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/admin/requests/${requestId}/${action}`, {
+        method: 'POST',
+        headers: {
+          'admin-password': adminToken,
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(`⚠ ${data.message}`);
+        return;
+      }
+
+      alert('✅ تم تحديث حالة الطلب.');
+      fetchPendingRequests();
+
+      // تحديث رصيد المستخدم الحالي إذا كان المستخدم نفسه
+      // نعيد جلب بيانات المستخدم لتحديث الرصيد
+      if (currentUser) {
+        const userRes = await fetch(`${apiBase}/users/${currentUser._id}`);
+        if (userRes.ok) {
+          currentUser = await userRes.json();
+          updateBalance();
+        }
+      }
+
+    } catch (err) {
+      alert('⚠ حدث خطأ أثناء تحديث حالة الطلب.');
+    }
+  }
+</script>
+</body>
+</html>
+
